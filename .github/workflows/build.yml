@@ -1,0 +1,68 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Ручной запуск
+
+jobs:
+  build:
+    name: Build IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install CocoaPods
+        if: hashFiles('Podfile') != ''
+        run: |
+          sudo gem install cocoapods
+          pod install
+
+      - name: Build App
+        run: |
+          xcodebuild \
+            -project AwesomeBrowserPro.xcodeproj \
+            -scheme AwesomeBrowserPro \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create Payload folder
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/AwesomeBrowserPro.app Payload/
+
+      - name: Create IPA
+        run: zip -r AwesomeBrowserPro.ipa Payload/
+
+      - name: Check size
+        run: |
+          SIZE=$(du -k Payload/AwesomeBrowserPro.app | cut -f1)
+          echo "📦 App size: $SIZE KB"
+          echo "SIZE_KB=$SIZE" >> $GITHUB_ENV
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AwesomeBrowserPro
+          path: AwesomeBrowserPro.ipa
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: AwesomeBrowserPro.ipa
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
