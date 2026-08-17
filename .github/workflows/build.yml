@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # Ручной запуск
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,6 +18,20 @@ jobs:
 
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Verify project structure
+        run: |
+          echo "📁 Проверка структуры проекта:"
+          ls -la
+          echo ""
+          echo "📁 Проверка AwesomeBrowserPro:"
+          ls -la AwesomeBrowserPro/ || echo "Папка AwesomeBrowserPro не найдена"
+          echo ""
+          echo "📁 Проверка Resources:"
+          ls -la AwesomeBrowserPro/Resources/ || echo "Папка Resources не найдена"
+          echo ""
+          echo "📁 Проверка Info.plist:"
+          ls -la AwesomeBrowserPro/Resources/Info.plist || echo "Info.plist не найден"
 
       - name: Install CocoaPods
         if: hashFiles('Podfile') != ''
@@ -35,27 +49,43 @@ jobs:
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            OTHER_SWIFT_FLAGS="-Osize" \
+            GCC_OPTIMIZATION_LEVEL=3
 
-      - name: Create Payload folder
+      - name: Verify .app
+        run: |
+          echo "📁 Проверка .app:"
+          ls -la build/Build/Products/Release-iphoneos/ || echo "Папка Release-iphoneos не найдена"
+
+      - name: Create Payload
         run: |
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/AwesomeBrowserPro.app Payload/
 
-      - name: Create IPA
-        run: zip -r AwesomeBrowserPro.ipa Payload/
-
       - name: Check size
         run: |
-          SIZE=$(du -k Payload/AwesomeBrowserPro.app | cut -f1)
-          echo "📦 App size: $SIZE KB"
+          SIZE=$(du -sk Payload/AwesomeBrowserPro.app | cut -f1)
+          echo "📦 Размер .app: $SIZE KB"
           echo "SIZE_KB=$SIZE" >> $GITHUB_ENV
+
+      - name: Create IPA
+        run: |
+          zip -r AwesomeBrowserPro.ipa Payload/
+
+      - name: Verify IPA
+        run: |
+          ls -la AwesomeBrowserPro.ipa
+          SIZE=$(ls -l AwesomeBrowserPro.ipa | awk '{print $5}')
+          SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
+          echo "📦 Итоговый размер IPA: $SIZE_MB MB"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: AwesomeBrowserPro
           path: AwesomeBrowserPro.ipa
+          retention-days: 30
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
